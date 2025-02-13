@@ -2,15 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import concurrent.futures
-import json
-import os
-import re
-import sys
-import subprocess
-import time
+import json,os,re,sys,time,subprocess,logging
 from urllib.request import urlopen
 from urllib.parse import quote
-import logging
 
 # 配置参数
 MIN_SPEED = 1024 * 1024  # 1024 KB/s
@@ -224,9 +218,9 @@ def parse_template(template_file):
 def is_channel_match(template_name, test_name):
     """
     判断 test_name 是否匹配 template_name，
-    利用正则确保匹配完整单词（例如 CCTV1 不匹配 CCTV11）
+    利用正则确保匹配完整单词（例如 CCTV1 不匹配 CCTV11，但 CCTV5+ 仍然匹配 CCTV5+）
     """
-    pattern = rf'\b{re.escape(template_name)}\b'
+    pattern = rf'\b{re.escape(template_name)}([\s_\-#\(]|$)'
     return re.search(pattern, test_name, re.IGNORECASE) is not None
 
 def txt_to_m3u(txt_path, m3u_path):
@@ -298,7 +292,7 @@ def main():
     
     # 对所有唯一 URL 并发测速（重复 URL 只测速一次）
     url_test_results = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         future_to_url = {}
         for url, groups in url_to_groups.items():
             # 传入的频道名称对测速结果不影响，取第一个即可
@@ -376,7 +370,7 @@ def main():
                         entries_num = 0
                         for channel_name, url, speed, (width, height, codec) in entries_list:
                             if speed >= MIN_SPEED and width >= MIN_RESOLUTION[0] and height >= MIN_RESOLUTION[1] and entries_num < MAX_ITEMS_PER_CHANNEL:
-                                out_file.write(f"{channel_name}({speed/1024/1024:.1f}MB_{width}x{height}_{codec}),{url}\n")
+                                out_file.write(f"{channel_name}({speed/1024/1024:.1f}MB_{height}p_{codec}),{url}\n")
                                 entries_num += 1
                 out_file.write("\n")
         out_file.write(f"更新时间,#genre#\n")
