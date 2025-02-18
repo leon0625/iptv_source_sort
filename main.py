@@ -78,24 +78,31 @@ def getStreamUrls(m3u8_url):
         pass
     return urls
 
-def get_resolution_and_codec(url):
+def get_resolution_and_codec(url, max_retries=3):
     """ 使用 ffprobe 获取视频分辨率和编码格式 """
-    try:
-        result = subprocess.run([
-            'ffprobe', '-v', 'error', '-select_streams', 'v:0',
-            '-show_entries', 'stream=width,height,codec_name',
-            '-of', 'json', url
-        ], capture_output=True, text=True, timeout=10)
-        data = json.loads(result.stdout)
-        if 'streams' in data and len(data['streams']) > 0:
-            stream = data['streams'][0]
-            width = stream.get('width', 0)
-            height = stream.get('height', 0)
-            codec = stream.get('codec_name', 'unknown')
-            return width, height, codec
-    except Exception as e:
-        # print(e)
-        pass
+    for try_times in range(max_retries):
+        try:
+            if try_times > 0:
+                time.sleep(3)
+            result = subprocess.run([
+                'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                '-show_entries', 'stream=width,height,codec_name',
+                '-of', 'json', url
+            ], capture_output=True, text=True, timeout=10)
+            # print(result.stdout)
+            data = json.loads(result.stdout)
+            if 'streams' in data and len(data['streams']) > 0:
+                stream = data['streams'][0]
+                width = stream.get('width', 0)
+                height = stream.get('height', 0)
+                codec = stream.get('codec_name', 'unknown')
+                if try_times > 0:
+                    logging.info(f"Retried {try_times} times to get resolution and codec: {width}x{height}, {codec}, {url}")
+                return width, height, codec
+            logging.debug(result.stderr)
+        except Exception as e:
+            logging.debug(e)
+            pass
     return 0, 0, 'unknown'
 
 def test_url_speed(channel_name, url):
@@ -134,7 +141,7 @@ def fetch_m3u_urls(subscribe_url, max_retries=3):
     urls = []
     for _ in range(max_retries):
         try:
-            encoded_url = quote(subscribe_url, safe=':/?=&')  # 仅对非 ASCII 字符进行编码
+            encoded_url = quote(subscribe_url, safe=':/?$&=@[]%')  # 仅对非 ASCII 字符进行编码
             with urlopen(encoded_url, timeout=5) as resp:
                 lines = resp.read().decode('utf-8', errors='ignore').strip().split('\n')
                 channel_name = None
